@@ -1,6 +1,12 @@
 pipeline {
     agent any
 
+    environment {
+        IMAGE_NAME = "yourdockerhubusername/your-image-name"
+        IMAGE_TAG = "latest"
+        DOCKER_CREDENTIALS_ID = "dockerhub-creds"
+    }
+
     stages {
         stage('Checkout') {
             steps {
@@ -17,8 +23,6 @@ pipeline {
                 dir('node-app') {
                     echo '📦 Installing Node.js dependencies...'
                     sh 'npm install'
-                    echo '🧪 Running Node.js app...'
-                    sh 'node index.js'
                 }
             }
         }
@@ -32,7 +36,7 @@ pipeline {
                     echo '🐍 Installing Python requirements...'
                     sh 'pip install -r requirements.txt'
                     echo '🚀 Running Python app...'
-                    sh 'python app.py'
+                    sh 'python app.py &'
                 }
             }
         }
@@ -43,8 +47,27 @@ pipeline {
             }
             steps {
                 dir('js-app') {
-                    echo '💻 Static JS app detected (index.html found).'
-                    echo 'No build needed for static HTML/JS.'
+                    echo '💻 Static JS app detected.'
+                }
+            }
+        }
+
+        stage('Docker Build') {
+            steps {
+                echo "🐳 Building Docker image $IMAGE_NAME:$IMAGE_TAG..."
+                sh "docker build -t $IMAGE_NAME:$IMAGE_TAG ."
+            }
+        }
+
+        stage('Docker Push') {
+            steps {
+                echo "📤 Pushing Docker image to Docker Hub..."
+                withCredentials([usernamePassword(credentialsId: "${DOCKER_CREDENTIALS_ID}", usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    sh """
+                    echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                    docker push $IMAGE_NAME:$IMAGE_TAG
+                    docker logout
+                    """
                 }
             }
         }
@@ -52,10 +75,10 @@ pipeline {
 
     post {
         success {
-            echo '✅ Pipeline completed successfully!'
+            echo '✅ CI pipeline completed successfully!'
         }
         failure {
-            echo '❌ Pipeline failed!'
+            echo '❌ CI pipeline failed!'
         }
     }
 }
